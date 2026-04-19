@@ -35,7 +35,10 @@
         system:
         let
           pkgs = pkgsFor system;
+          lib = pkgs.lib;
           sherpa-deps = sherpa-onnx.packages.${system};
+          commandProviderPath = lib.makeBinPath [ pkgs.python3 ];
+          commandProviderLibraryPath = lib.makeLibraryPath [ pkgs.libopus ];
         in
         {
           fcitx5-vinput = pkgs.stdenv.mkDerivation {
@@ -48,6 +51,7 @@
               pkg-config
               gettext
               fcitx5
+              makeBinaryWrapper
               qt6.wrapQtAppsHook
               autoPatchelfHook
             ];
@@ -80,6 +84,12 @@
 
             postInstall = ''
               rm -f $out/lib/fcitx5-vinput/libonnxruntime.so
+
+              for program in $out/bin/*; do
+                wrapProgram "$program" \
+                  --prefix PATH : ${commandProviderPath} \
+                  --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath}
+              done
             '';
           };
 
