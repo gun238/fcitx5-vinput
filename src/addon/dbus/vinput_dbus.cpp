@@ -15,6 +15,8 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 
+#include <array>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <tuple>
@@ -30,6 +32,8 @@ constexpr const char *kSystemdManagerInterface =
 constexpr const char *kSystemdRestartUnit = "RestartUnit";
 constexpr const char *kReplaceMode = "replace";
 constexpr uint64_t kStatusSyncIntervalUsec = 200 * 1000;
+constexpr int kHudRefreshIntervalMs = 120;
+constexpr int kHudNotificationTimeoutMs = 350;
 std::string StartingPreeditText() { return _("... Starting ..."); }
 std::string RecordingPreeditText() { return _("... Recording ..."); }
 
@@ -47,16 +51,46 @@ std::string DaemonNotRespondingPreeditText() {
   return _("Voice input daemon is not responding.");
 }
 
+std::string AnimatedWaveformFrame() {
+  static constexpr std::array<const char *, 8> kFrames = {
+      "▁▃▆█▆▃▁", "▂▄▇█▇▄▂", "▃▅█▇█▅▃", "▄▆█▆█▆▄",
+      "▃▅█▇█▅▃", "▂▄▇█▇▄▂", "▁▃▆█▆▃▁", "▂▅▇█▇▅▂"};
+  const auto now = std::chrono::steady_clock::now().time_since_epoch();
+  const auto tick = std::chrono::duration_cast<std::chrono::milliseconds>(now)
+                        .count() /
+                    140;
+  return kFrames[static_cast<size_t>(tick % kFrames.size())];
+}
+
 std::string ComposeLivePreedit(bool command_mode, bool recording,
                                const std::string &partial_text,
                                const std::string &fallback_text) {
-  (void)command_mode;
-  (void)recording;
-  if (partial_text.empty()) {
-    return fallback_text;
+  std::string status = fallback_text;
+  if (!partial_text.empty()) {
+    status = partial_text;
   }
 
-  return partial_text;
+  const char *mode = command_mode ? "CMD" : "ASR";
+  const char *phase = recording ? "LISTENING" : "PROCESSING";
+  const std::string wave = AnimatedWaveformFrame();
+
+  std::string out;
+  out.reserve(status.size() + 96);
+  out += "⟪ " + std::string(mode) + " // " + phase + " ⟫\n";
+  out += "⌁ ";
+  out += wave;
+  out += " ⌁\n";
+  out += status;
+  return out;
+}
+
+std::string RenderHudBody(const std::string &text) {
+  std::string hud;
+  hud.reserve(text.size() + 64);
+  hud += "╭────────── VINPUT HUD ──────────╮\n";
+  hud += text;
+  hud += "\n╰────────────────────────────────╯";
+  return hud;
 }
 
 std::string AppendDetail(std::string summary, const std::string &detail) {
@@ -1007,20 +1041,52 @@ void VinputEngine::notifyInfo(const std::string &message) {
 
 void VinputEngine::updatePreedit(fcitx::InputContext *ic,
                                  const std::string &text) {
-  if (!ic)
-    return;
-  fcitx::Text preedit;
-  preedit.append(text);
-  ic->inputPanel().setPreedit(preedit);
-  ic->updatePreedit();
-  ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+  if (ic) {
+    fcitx::Text empty;
+    ic->inputPanel().setPreedit(empty);
+    ic->updatePreedit();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+  }
+  showStatusHud(text);
 }
 
 void VinputEngine::clearPreedit(fcitx::InputContext *ic) {
-  if (!ic)
+  if (ic) {
+    fcitx::Text empty;
+    ic->inputPanel().setPreedit(empty);
+    ic->updatePreedit();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+  }
+  hideStatusHud();
+}
+
+void VinputEngine::showStatusHud(const std::string &text) {
+  if (text.empty()) {
+    hideStatusHud();
     return;
-  fcitx::Text empty;
-  ic->inputPanel().setPreedit(empty);
-  ic->updatePreedit();
-  ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (text == last_hud_text_ &&
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          now - last_hud_emit_time_)
+              .count() < kHudRefreshIntervalMs) {
+    return;
+  }
+  last_hud_text_ = text;
+  last_hud_emit_time_ = now;
+
+  auto *notifications = instance_->addonManager().addon("notifications", true);
+  if (!notifications) {
+    fprintf(stderr, "vinput hud: %s\n", text.c_str());
+    return;
+  }
+
+  notifications->call<fcitx::INotifications::sendNotification>(
+      "fcitx5-vinput-hud", 0, "audio-input-microphone", "Voice Input HUD",
+      RenderHudBody(text), std::vector<std::string>{}, kHudNotificationTimeoutMs,
+      fcitx::NotificationActionCallback{}, fcitx::NotificationClosedCallback{});
+}
+
+void VinputEngine::hideStatusHud() { last_hud_text_.clear(); }
 }
