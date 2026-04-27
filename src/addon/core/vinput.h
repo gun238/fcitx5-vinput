@@ -108,6 +108,8 @@ private:
   resolveFrontendInputContext(fcitx::InputContext *fallback_ic = nullptr) const;
   void updatePreedit(fcitx::InputContext *ic, const std::string &text);
   void clearPreedit(fcitx::InputContext *ic);
+  void showStatusHud(const std::string &text);
+  void hideStatusHud();
   void appendContextEntry(const std::string &text, const char *source);
   void flushContextBuffer();
   void accumulateContextBuffer(const std::string &text, fcitx::InputContext *ic);
@@ -177,6 +179,8 @@ private:
   std::chrono::steady_clock::time_point last_trigger_time_;
   std::chrono::steady_clock::time_point daemon_sync_blocked_until_{};
   std::string last_known_daemon_status_;
+  std::string last_hud_text_;
+  std::chrono::steady_clock::time_point last_hud_emit_time_{};
   vinput::dbus::AsrBackendState cached_asr_backend_state_;
   bool has_cached_asr_backend_state_ = false;
   std::atomic<uint64_t> asr_state_refresh_seq_{0};
