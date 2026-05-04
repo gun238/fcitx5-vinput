@@ -170,6 +170,11 @@ VinputEngine::VinputEngine(fcitx::Instance *instance) : instance_(instance) {
 }
 
 VinputEngine::~VinputEngine() {
+  hideStatusHud();
+  if (hud_process_) {
+    pclose(hud_process_);
+    hud_process_ = nullptr;
+  }
   flushContextBuffer();
   context_flush_timer_.reset();
   status_sync_event_.reset();
