@@ -11,6 +11,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -108,8 +110,10 @@ private:
   resolveFrontendInputContext(fcitx::InputContext *fallback_ic = nullptr) const;
   void updatePreedit(fcitx::InputContext *ic, const std::string &text);
   void clearPreedit(fcitx::InputContext *ic);
-  void showStatusHud(const std::string &text);
+  void showStatusHud(const std::string &text, fcitx::InputContext *ic);
+  void showStatusHudState(const char *state, fcitx::InputContext *ic);
   void hideStatusHud();
+  bool ensureStatusHudProcess();
   void appendContextEntry(const std::string &text, const char *source);
   void flushContextBuffer();
   void accumulateContextBuffer(const std::string &text, fcitx::InputContext *ic);
@@ -181,6 +185,8 @@ private:
   std::string last_known_daemon_status_;
   std::string last_hud_text_;
   std::chrono::steady_clock::time_point last_hud_emit_time_{};
+  uint32_t hud_notification_id_ = 0;
+  FILE *hud_process_ = nullptr;
   vinput::dbus::AsrBackendState cached_asr_backend_state_;
   bool has_cached_asr_backend_state_ = false;
   std::atomic<uint64_t> asr_state_refresh_seq_{0};

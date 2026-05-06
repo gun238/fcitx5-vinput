@@ -1,4 +1,5 @@
 #include "common/asr/recognition_result.h"
+#include "config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
@@ -18,6 +19,9 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <csignal>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -33,7 +37,6 @@ constexpr const char *kSystemdRestartUnit = "RestartUnit";
 constexpr const char *kReplaceMode = "replace";
 constexpr uint64_t kStatusSyncIntervalUsec = 200 * 1000;
 constexpr int kHudRefreshIntervalMs = 120;
-constexpr int kHudNotificationTimeoutMs = 350;
 std::string StartingPreeditText() { return _("... Starting ..."); }
 std::string RecordingPreeditText() { return _("... Recording ..."); }
 
@@ -82,15 +85,6 @@ std::string ComposeLivePreedit(bool command_mode, bool recording,
   out += " ⌁\n";
   out += status;
   return out;
-}
-
-std::string RenderHudBody(const std::string &text) {
-  std::string hud;
-  hud.reserve(text.size() + 64);
-  hud += "╭────────── VINPUT HUD ──────────╮\n";
-  hud += text;
-  hud += "\n╰────────────────────────────────╯";
-  return hud;
 }
 
 std::string AppendDetail(std::string summary, const std::string &detail) {
@@ -325,6 +319,43 @@ std::string RenderMethodCallFailure(std::string_view error_name,
   return fallback;
 }
 
+std::filesystem::path HudHelperPath() {
+  return std::filesystem::path(VINPUT_DEFAULT_CORE_CONFIG_INSTALL_PATH)
+      .parent_path() /
+         "hud" / "vinput_cat_hud.py";
+}
+
+std::string ShellQuote(const std::filesystem::path &path) {
+  std::string out = "'";
+  for (char ch : path.string()) {
+    if (ch == '\'') {
+      out += "'\\''";
+    } else {
+      out += ch;
+    }
+  }
+  out += "'";
+  return out;
+}
+
+std::optional<const char *> HudStateFromText(const std::string &text) {
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  if (text.find("Recording") != std::string::npos ||
+      text.find("Commanding") != std::string::npos ||
+      text.find("LISTENING") != std::string::npos) {
+    return "listening";
+  }
+  if (text.find("Starting") != std::string::npos ||
+      text.find("Recognizing") != std::string::npos ||
+      text.find("Postprocessing") != std::string::npos ||
+      text.find("PROCESSING") != std::string::npos) {
+    return "typing";
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 void VinputEngine::setupDBusWatcher() {
@@ -535,6 +566,7 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext *ic,
   status_ic_ = ic;
   updatePreedit(
       ic, ComposeLivePreedit(command_mode, false, {}, StartingPreeditText()));
+  showStatusHudState("typing", ic);
   ensureStatusSync();
 }
 
@@ -568,6 +600,7 @@ void VinputEngine::enterRecordingState(fcitx::InputContext *ic,
                              session_ ? session_->partial_text : std::string{},
                              command_mode ? CommandingPreeditText()
                                           : RecordingPreeditText()));
+  showStatusHudState("listening", ic);
   ensureStatusSync();
 }
 
@@ -599,6 +632,7 @@ void VinputEngine::enterBusyState(fcitx::InputContext *ic, bool command_mode,
       ic, ComposeLivePreedit(command_mode, false,
                              session_ ? session_->partial_text : std::string{},
                              preedit_text));
+  showStatusHudState("typing", ic);
   ensureStatusSync();
 }
 
@@ -1047,7 +1081,7 @@ void VinputEngine::updatePreedit(fcitx::InputContext *ic,
     ic->updatePreedit();
     ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
   }
-  showStatusHud(text);
+  showStatusHud(text, ic);
 }
 
 void VinputEngine::clearPreedit(fcitx::InputContext *ic) {
@@ -1060,33 +1094,82 @@ void VinputEngine::clearPreedit(fcitx::InputContext *ic) {
   hideStatusHud();
 }
 
-void VinputEngine::showStatusHud(const std::string &text) {
-  if (text.empty()) {
+bool VinputEngine::ensureStatusHudProcess() {
+  if (hud_process_) {
+    return true;
+  }
+
+  const auto helper_path = HudHelperPath();
+  std::error_code ec;
+  if (!std::filesystem::exists(helper_path, ec)) {
+    fprintf(stderr, "vinput hud: helper not found: %s\n",
+            helper_path.c_str());
+    return false;
+  }
+
+  std::signal(SIGPIPE, SIG_IGN);
+  const std::string command = "python3 " + ShellQuote(helper_path) + " 2>/dev/null";
+  hud_process_ = popen(command.c_str(), "w");
+  if (!hud_process_) {
+    fprintf(stderr, "vinput hud: failed to start helper: %s\n",
+            command.c_str());
+    return false;
+  }
+  return true;
+}
+
+void VinputEngine::showStatusHud(const std::string &text,
+                                 fcitx::InputContext *ic) {
+  const auto state = HudStateFromText(text);
+  if (!state) {
+    hideStatusHud();
+    return;
+  }
+  showStatusHudState(*state, ic);
+}
+
+void VinputEngine::showStatusHudState(const char *state,
+                                      fcitx::InputContext *ic) {
+  if (!state || state[0] == '\0') {
     hideStatusHud();
     return;
   }
 
   const auto now = std::chrono::steady_clock::now();
-  if (text == last_hud_text_ &&
+  if (state == last_hud_text_ &&
       std::chrono::duration_cast<std::chrono::milliseconds>(
           now - last_hud_emit_time_)
               .count() < kHudRefreshIntervalMs) {
     return;
   }
-  last_hud_text_ = text;
+  last_hud_text_ = state;
   last_hud_emit_time_ = now;
 
-  auto *notifications = instance_->addonManager().addon("notifications", true);
-  if (!notifications) {
-    fprintf(stderr, "vinput hud: %s\n", text.c_str());
+  if (!ensureStatusHudProcess()) {
     return;
   }
 
-  notifications->call<fcitx::INotifications::sendNotification>(
-      "fcitx5-vinput-hud", 0, "audio-input-microphone", "Voice Input HUD",
-      RenderHudBody(text), std::vector<std::string>{}, kHudNotificationTimeoutMs,
-      fcitx::NotificationActionCallback{}, fcitx::NotificationClosedCallback{});
+  int x = 0;
+  int y = 0;
+  if (ic) {
+    const auto &rect = ic->cursorRect();
+    x = rect.left();
+    y = rect.bottom();
+  }
+  if (fprintf(hud_process_, "show %s %d %d\n", state, x, y) < 0 ||
+      fflush(hud_process_) != 0) {
+    pclose(hud_process_);
+    hud_process_ = nullptr;
+  }
 }
 
-void VinputEngine::hideStatusHud() { last_hud_text_.clear(); }
+void VinputEngine::hideStatusHud() {
+  last_hud_text_.clear();
+
+  if (hud_process_) {
+    if (fprintf(hud_process_, "hide\n") < 0 || fflush(hud_process_) != 0) {
+      pclose(hud_process_);
+      hud_process_ = nullptr;
+    }
+  }
 }

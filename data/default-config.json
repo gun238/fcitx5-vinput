@@ -23,6 +23,12 @@
         "id": "sherpa-onnx",
         "type": "local",
         "timeout_ms": 15000
+      },
+      {
+        "id": "doubao",
+        "type": "doubao",
+        "api_key_path": "C:/Users/Administrator/Documents/apikeys/doubao.txt",
+        "timeout_ms": 70000
       }
     ]
   },

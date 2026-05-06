@@ -1,5 +1,53 @@
 #include "common/utils/process_utils.h"
 
+#ifdef _WIN32
+
+namespace vinput::process {
+
+CommandResult RunCommandWithInput(const CommandSpec &spec,
+                                  std::span<const std::byte> input) {
+  (void)spec;
+  (void)input;
+  CommandResult result;
+  result.launch_failed = true;
+  result.stderr_text =
+      "Command-based providers are not supported in this Windows build yet.";
+  return result;
+}
+
+bool SpawnDetached(const CommandSpec &spec,
+                   const std::filesystem::path &working_dir, pid_t *pid_out,
+                   std::string *error) {
+  (void)spec;
+  (void)working_dir;
+  if (pid_out) {
+    *pid_out = -1;
+  }
+  if (error) {
+    *error = "Detached adapter processes are not supported in this Windows build yet.";
+  }
+  return false;
+}
+
+bool SpawnForMonitoring(const CommandSpec &spec,
+                        const std::filesystem::path &working_dir,
+                        SpawnedProcess *process_out, std::string *error) {
+  (void)spec;
+  (void)working_dir;
+  if (process_out) {
+    process_out->pid = -1;
+    process_out->stderr_fd = -1;
+  }
+  if (error) {
+    *error = "Monitored adapter processes are not supported in this Windows build yet.";
+  }
+  return false;
+}
+
+} // namespace vinput::process
+
+#else
+
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -489,3 +537,5 @@ bool SpawnForMonitoring(const CommandSpec &spec,
 }
 
 } // namespace vinput::process
+
+#endif

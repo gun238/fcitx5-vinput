@@ -6,8 +6,10 @@
 
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -37,6 +39,35 @@ bool IsPathWithinRoot(const fs::path &path, const fs::path &root) {
     }
   }
   return true;
+}
+
+std::string PathForArchiveApi(const fs::path &path) {
+#ifdef _WIN32
+  const auto utf8 = path.u8string();
+  return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
+#else
+  return path.string();
+#endif
+}
+
+fs::path CreateTempDirectory(const fs::path &base_dir) {
+  std::random_device rd;
+  std::mt19937_64 rng(rd());
+  const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    const auto candidate =
+        base_dir / (".tmp-" + std::to_string(ticks) + "-" +
+                    std::to_string(rng()));
+    std::error_code ec;
+    if (fs::create_directory(candidate, ec)) {
+      return candidate;
+    }
+    if (ec && ec != std::errc::file_exists) {
+      return {};
+    }
+  }
+  return {};
 }
 
 std::vector<RemoteModelEntry> ParseRegistryJson(const std::string &content,
@@ -184,14 +215,12 @@ bool ModelRepository::InstallModel(const std::vector<std::string> &registry_urls
     }
   }
 
-  // Create temporary directory with random name to avoid symlink race
-  std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
-  char *tmp_result = mkdtemp(tmp_template.data());
-  if (!tmp_result) {
+  // Create temporary directory with random name to avoid symlink races.
+  const fs::path tmp_dir = CreateTempDirectory(base_dir_);
+  if (tmp_dir.empty()) {
     if (error) *error = "failed to create temp dir";
     return false;
   }
-  const fs::path tmp_dir = fs::path(tmp_result);
   std::error_code ec;
 
   // Determine archive filename from first URL
@@ -390,14 +419,12 @@ bool ModelRepository::InstallModel(const CoreConfig &config,
     }
   }
 
-  // Create temporary directory with random name to avoid symlink race
-  std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
-  char *tmp_result = mkdtemp(tmp_template.data());
-  if (!tmp_result) {
+  // Create temporary directory with random name to avoid symlink races.
+  const fs::path tmp_dir = CreateTempDirectory(base_dir_);
+  if (tmp_dir.empty()) {
     if (error) *error = "failed to create temp dir";
     return false;
   }
-  const fs::path tmp_dir = fs::path(tmp_result);
   std::error_code ec;
 
   // Determine archive filename from first URL
@@ -636,7 +663,8 @@ bool ModelRepository::ExtractArchive(const fs::path &archive,
                ARCHIVE_EXTRACT_FFLAGS);
   archive_write_disk_set_standard_lookup(out);
 
-  int r = archive_read_open_filename(a, archive.c_str(), 16384);
+  const std::string archive_path = PathForArchiveApi(archive);
+  int r = archive_read_open_filename(a, archive_path.c_str(), 16384);
   if (r != ARCHIVE_OK) {
     if (error)
       *error = std::string("failed to open archive: ") +
@@ -656,7 +684,7 @@ bool ModelRepository::ExtractArchive(const fs::path &archive,
     }
 
     std::string entry_path(raw_path);
-    const mode_t entry_type = archive_entry_filetype(entry);
+    const auto entry_type = archive_entry_filetype(entry);
 
     // Security: reject absolute paths
     if (!entry_path.empty() && entry_path[0] == '/') {
@@ -723,7 +751,8 @@ bool ModelRepository::ExtractArchive(const fs::path &archive,
     }
 
     // Set the destination path
-    archive_entry_set_pathname(entry, full_dest.c_str());
+    const std::string output_path = PathForArchiveApi(full_dest);
+    archive_entry_set_pathname(entry, output_path.c_str());
 
     r = archive_write_header(out, entry);
     if (r != ARCHIVE_OK) {

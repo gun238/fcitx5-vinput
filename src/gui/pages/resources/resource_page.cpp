@@ -16,8 +16,7 @@
 #include "gui/utils/config_manager.h"
 #include "gui/utils/i18n_cache.h"
 #include "gui/utils/download_worker.h"
-#include "cli/runtime/dbus_client.h"
-#include "cli/runtime/systemd_client.h"
+#include "gui/utils/runtime_bridge.h"
 #include "common/utils/download_progress.h"
 #include "common/utils/string_utils.h"
 
@@ -45,15 +44,7 @@ QLineEdit *CreateFilterEdit(const QString &placeholder, QWidget *parent) {
 }
 
 bool ReloadAsrBackend(std::string *error = nullptr) {
-  vinput::cli::DbusClient dbus;
-  std::string daemon_error;
-  if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error) {
-      *error = daemon_error;
-    }
-    return daemon_error.empty();
-  }
-  return dbus.ReloadAsrBackend(error);
+  return vinput::gui::ReloadAsrBackend(error);
 }
 
 template <typename Callback>

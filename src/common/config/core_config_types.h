@@ -13,6 +13,7 @@ namespace vinput::asr {
 
 inline constexpr char kLocalProviderType[] = "local";
 inline constexpr char kCommandProviderType[] = "command";
+inline constexpr char kDoubaoProviderType[] = "doubao";
 
 }  // namespace vinput::asr
 
@@ -46,7 +47,12 @@ struct CommandAsrProvider : AsrProviderBase {
   std::map<std::string, std::string> env;
 };
 
-using AsrProvider = std::variant<LocalAsrProvider, CommandAsrProvider>;
+struct DoubaoAsrProvider : AsrProviderBase {
+  std::string apiKeyPath;
+};
+
+using AsrProvider =
+    std::variant<LocalAsrProvider, CommandAsrProvider, DoubaoAsrProvider>;
 
 // Helper to get the id from any AsrProvider variant
 inline const std::string &AsrProviderId(const AsrProvider &p) {
@@ -62,6 +68,8 @@ inline int AsrProviderTimeoutMs(const AsrProvider &p) {
 inline std::string_view AsrProviderType(const AsrProvider &p) {
   if (std::holds_alternative<LocalAsrProvider>(p))
     return vinput::asr::kLocalProviderType;
+  if (std::holds_alternative<DoubaoAsrProvider>(p))
+    return vinput::asr::kDoubaoProviderType;
   return vinput::asr::kCommandProviderType;
 }
 

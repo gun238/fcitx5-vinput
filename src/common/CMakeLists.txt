@@ -6,13 +6,18 @@ set(VINPUT_CONFIG_SOURCES
     config/core_config_resolve.cpp
     config/core_config_json.cpp
     config/config_router.cpp
-    config/vinput_config.cpp
     scene/postprocess_scene.cpp
     i18n.cpp
     utils/path_utils.cpp
     utils/sandbox.cpp
     utils/file_utils.cpp
 )
+
+if(NOT WIN32)
+    list(APPEND VINPUT_CONFIG_SOURCES
+        config/vinput_config.cpp
+    )
+endif()
 
 add_library(vinput-config STATIC
     ${VINPUT_CONFIG_SOURCES}
@@ -51,16 +56,24 @@ target_include_directories(vinput-config PUBLIC
 )
 
 target_link_libraries(vinput-common PUBLIC
-    Fcitx5::Config
     nlohmann_json::nlohmann_json
     CURL::libcurl
     LibArchive::LibArchive
     OpenSSL::Crypto
-    ${GETTEXT_LIBRARIES}
 )
 
 target_link_libraries(vinput-config PUBLIC
-    Fcitx5::Config
     nlohmann_json::nlohmann_json
-    ${GETTEXT_LIBRARIES}
 )
+
+if(NOT WIN32)
+    target_link_libraries(vinput-common PUBLIC
+        Fcitx5::Config
+        ${GETTEXT_LIBRARIES}
+    )
+
+    target_link_libraries(vinput-config PUBLIC
+        Fcitx5::Config
+        ${GETTEXT_LIBRARIES}
+    )
+endif()

@@ -37,3 +37,7 @@ configure_file(vinput-addon.conf.in vinput-addon.conf @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vinput-addon.conf"
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon"
         RENAME vinput.conf)
+install(PROGRAMS hud/vinput_cat_hud.py
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/hud")
+install(FILES "${CMAKE_SOURCE_DIR}/data/hud/cat-typing.gif"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/hud")

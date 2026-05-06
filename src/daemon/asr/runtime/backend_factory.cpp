@@ -1,10 +1,13 @@
 #include "daemon/asr/runtime/backend_factory.h"
 
 #include "common/asr/model_manager.h"
-#include "daemon/asr/backends/command_batch_backend.h"
-#include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 #include "daemon/asr/backends/sherpa_streaming_backend.h"
+
+#ifndef _WIN32
+#include "daemon/asr/backends/command_batch_backend.h"
+#include "daemon/asr/backends/command_streaming_backend.h"
+#endif
 
 namespace vinput::daemon::asr {
 
@@ -83,10 +86,26 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig &config,
     return CreateLocalBackend(config, *local, error);
   }
   if (const auto *command = std::get_if<CommandAsrProvider>(provider)) {
+#ifdef _WIN32
+    if (error) {
+      *error =
+          "Command-based ASR providers are not supported in the Windows build.";
+    }
+    return nullptr;
+#else
     if (IsStreamingCommandProvider(*command)) {
       return CreateCommandStreamingBackend(*command, error);
     }
     return CreateCommandBatchBackend(*command, error);
+#endif
+  }
+  if (std::holds_alternative<DoubaoAsrProvider>(*provider)) {
+    if (error) {
+      *error =
+          "Doubao ASR is handled by the Windows voice input runtime, not the "
+          "local daemon backend.";
+    }
+    return nullptr;
   }
 
   if (error) {

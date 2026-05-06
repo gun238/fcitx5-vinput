@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets Network Concurrent REQUIRED)
 find_package(Qt6LinguistTools QUIET)
 set(QT_LINGUIST_FOUND ${Qt6LinguistTools_FOUND})
 
@@ -94,6 +94,7 @@ target_link_libraries(vinput-gui
     Qt6::Gui
     Qt6::Widgets
     Qt6::Network
+    Qt6::Concurrent
     vinput-common
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}

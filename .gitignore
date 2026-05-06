@@ -1,4 +1,6 @@
 build/
+build-win/
+build-local/
 builddir/
 build-test/
 dist/

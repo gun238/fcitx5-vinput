@@ -53,6 +53,12 @@ bool ValidateCoreConfig(const CoreConfig &config, std::string *error) {
                                      "' must not have an empty command.");
         }
       }
+      if (const auto *doubao = std::get_if<DoubaoAsrProvider>(&provider)) {
+        if (doubao->apiKeyPath.empty()) {
+          return SetError(error, "Doubao ASR provider '" + id +
+                                     "' must configure api_key_path.");
+        }
+      }
     }
   }
 
