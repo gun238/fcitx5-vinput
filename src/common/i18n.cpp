@@ -15,6 +15,7 @@ namespace vinput::i18n {
 
 namespace {
 
+#ifndef _WIN32
 std::string NormalizeLocaleName(std::string locale) {
   const auto colon = locale.find(':');
   if (colon != std::string::npos) {
@@ -115,15 +116,20 @@ const char *ResolveLocaleDir() {
   }
   return VINPUT_LOCALEDIR;
 }
+#endif
 
 } // namespace
 
 void Init() {
+#ifdef _WIN32
+  setlocale(LC_ALL, "");
+#else
   setlocale(LC_ALL, "");
   ApplyPreferredMessageLocale();
   bindtextdomain("fcitx5-vinput", ResolveLocaleDir());
   bind_textdomain_codeset("fcitx5-vinput", "UTF-8");
   textdomain("fcitx5-vinput");
+#endif
 }
 
 } // namespace vinput::i18n

@@ -4,7 +4,12 @@
 #include <cstring>
 #include <fstream>
 #include <system_error>
+
+#ifdef _WIN32
+#include <cstdio>
+#else
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -160,6 +165,44 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
     return false;
   }
 
+#ifdef _WIN32
+  const auto tmp_path =
+      resolved_target.parent_path() /
+      (resolved_target.filename().string() + ".tmp");
+  {
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+      if (error) {
+        *error = "Failed to open temporary file " + tmp_path.string();
+      }
+      return false;
+    }
+    out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    if (!out.good()) {
+      if (error) {
+        *error = "Failed to write temporary file " + tmp_path.string();
+      }
+      out.close();
+      std::error_code cleanup_ec;
+      std::filesystem::remove(tmp_path, cleanup_ec);
+      return false;
+    }
+  }
+
+  std::error_code ec;
+  std::filesystem::remove(resolved_target, ec);
+  ec.clear();
+  std::filesystem::rename(tmp_path, resolved_target, ec);
+  if (ec) {
+    if (error) {
+      *error = "rename failed: " + ec.message();
+    }
+    std::error_code cleanup_ec;
+    std::filesystem::remove(tmp_path, cleanup_ec);
+    return false;
+  }
+  return true;
+#else
   auto tmp_path = resolved_target.parent_path() /
                   (resolved_target.filename().string() + ".tmp.XXXXXX");
   std::string tmp_str = tmp_path.string();
@@ -204,6 +247,7 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
   }
 
   return true;
+#endif
 }
 
 }  // namespace vinput::file

@@ -126,6 +126,28 @@ void from_json(const json &j, CommandAsrProvider &p) {
 }
 
 // ---------------------------------------------------------------------------
+// DoubaoAsrProvider
+// ---------------------------------------------------------------------------
+
+void to_json(json &j, const DoubaoAsrProvider &p) {
+  j = json::object();
+  j["id"] = p.id;
+  j["type"] = vinput::asr::kDoubaoProviderType;
+  if (!p.apiKeyPath.empty()) {
+    j["api_key_path"] = p.apiKeyPath;
+  }
+  if (p.timeoutMs > 0) {
+    j["timeout_ms"] = p.timeoutMs;
+  }
+}
+
+void from_json(const json &j, DoubaoAsrProvider &p) {
+  p.id = j.value("id", p.id);
+  p.apiKeyPath = j.value("api_key_path", p.apiKeyPath);
+  p.timeoutMs = j.value("timeout_ms", p.timeoutMs);
+}
+
+// ---------------------------------------------------------------------------
 // AsrProvider (variant)
 // ---------------------------------------------------------------------------
 
@@ -143,6 +165,10 @@ void from_json(const json &j, AsrProvider &p) {
     CommandAsrProvider cmd;
     from_json(j, cmd);
     p = std::move(cmd);
+  } else if (type == vinput::asr::kDoubaoProviderType) {
+    DoubaoAsrProvider doubao;
+    from_json(j, doubao);
+    p = std::move(doubao);
   }
   // unknown type: leave p in default-constructed state
 }

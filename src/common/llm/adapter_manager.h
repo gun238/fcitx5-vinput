@@ -1,9 +1,14 @@
 #pragma once
 
 #include <filesystem>
-#include <sys/types.h>
 #include <string>
 #include <string_view>
+
+#ifndef _WIN32
+#include <sys/types.h>
+#else
+using pid_t = int;
+#endif
 
 struct CoreConfig;
 struct LlmAdapter;

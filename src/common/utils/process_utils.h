@@ -5,8 +5,13 @@
 #include <map>
 #include <span>
 #include <string>
-#include <sys/types.h>
 #include <vector>
+
+#ifdef _WIN32
+using pid_t = int;
+#else
+#include <sys/types.h>
+#endif
 
 namespace vinput::process {
 

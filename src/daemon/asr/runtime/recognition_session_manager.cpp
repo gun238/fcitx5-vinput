@@ -95,6 +95,8 @@ std::string BuildRuntimeSignature(const CoreConfig &config) {
     provider_json["model"] = local->model;
     provider_json["hotwords_file"] = local->hotwordsFile;
     provider_json["vad_enabled"] = config.asr.vad.enabled;
+  } else if (const auto *doubao = std::get_if<DoubaoAsrProvider>(provider)) {
+    provider_json["api_key_path"] = doubao->apiKeyPath;
   } else if (const auto *command = std::get_if<CommandAsrProvider>(provider)) {
     provider_json["command"] = command->command;
     provider_json["args"] = command->args;

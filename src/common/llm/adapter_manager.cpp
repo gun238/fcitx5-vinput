@@ -1,12 +1,15 @@
 #include "common/llm/adapter_manager.h"
 
+#ifndef _WIN32
 #include <cerrno>
 #include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include <fstream>
 #include <string>
 #include <string_view>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include "common/config/core_config.h"
 #include "common/utils/path_utils.h"
@@ -69,10 +72,15 @@ pid_t ReadPid(std::string_view adapter_id) {
 }
 
 bool ProcessExists(pid_t pid) {
+#ifdef _WIN32
+  (void)pid;
+  return false;
+#else
   if (pid <= 0) {
     return false;
   }
   return kill(pid, 0) == 0 || errno == EPERM;
+#endif
 }
 
 }  // namespace
@@ -144,6 +152,13 @@ bool IsRunning(std::string_view adapter_id) {
 }
 
 bool Stop(std::string_view adapter_id, std::string *error) {
+#ifdef _WIN32
+  RemovePidFile(adapter_id);
+  if (error) {
+    *error = "adapter process management is not supported on Windows";
+  }
+  return false;
+#else
   const pid_t pid = ReadPid(adapter_id);
   if (!ProcessExists(pid)) {
     RemovePidFile(adapter_id);
@@ -171,6 +186,7 @@ bool Stop(std::string_view adapter_id, std::string *error) {
     error->clear();
   }
   return true;
+#endif
 }
 
 }  // namespace vinput::adapter
